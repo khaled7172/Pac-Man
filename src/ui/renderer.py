@@ -4,29 +4,31 @@ Nothing in here touches game state directly — it only reads and draws.
 The game passes data in; this module draws it out.
 """
 
+import math
+
 import pygame
 from typing import Optional
 
-# ── Colours ─────────────────────────────────────────────────────────────
+# ── Colours ───────────────────────────────────────────────────────────────────
 
-BLACK: tuple[int, int, int] = (0, 0, 0)
-DARK_BLUE: tuple[int, int, int] = (0, 0, 40)
-WALL_BLUE: tuple[int, int, int] = (33, 33, 222)
-WALL_BORDER: tuple[int, int, int] = (50, 50, 255)
-FLOOR: tuple[int, int, int] = (0, 0, 20)
-YELLOW: tuple[int, int, int] = (255, 255, 0)
-WHITE: tuple[int, int, int] = (255, 255, 255)
-GREY: tuple[int, int, int] = (180, 180, 180)
-RED: tuple[int, int, int] = (220, 50, 50)
+BLACK:       tuple[int, int, int] = (0,   0,   0)
+DARK_BLUE:   tuple[int, int, int] = (0,   0,   40)
+WALL_BLUE:   tuple[int, int, int] = (33,  33,  222)
+WALL_BORDER: tuple[int, int, int] = (50,  50,  255)
+FLOOR:       tuple[int, int, int] = (0,   0,   20)
+YELLOW:      tuple[int, int, int] = (255, 255, 0)
+WHITE:       tuple[int, int, int] = (255, 255, 255)
+GREY:        tuple[int, int, int] = (180, 180, 180)
+RED:         tuple[int, int, int] = (220, 50,  50)
 
-HUD_BG: tuple[int, int, int] = (10, 10, 30)
-HUD_TEXT: tuple[int, int, int] = (220, 220, 220)
+HUD_BG:      tuple[int, int, int] = (10,  10,  30)
+HUD_TEXT:    tuple[int, int, int] = (220, 220, 220)
 
 # Bitmask constants (must match maze/loader.py)
 NORTH: int = 1
-EAST: int = 2
+EAST:  int = 2
 SOUTH: int = 4
-WEST: int = 8
+WEST:  int = 8
 
 
 class Renderer:
@@ -49,11 +51,11 @@ class Renderer:
         hud_width: int = 200,
     ) -> None:
         """Initialise the renderer."""
-        self._screen = screen
+        self._screen    = screen
         self._maze_cols = maze_cols
         self._maze_rows = maze_rows
-        self._tile = tile_size
-        self._hud_w = hud_width
+        self._tile      = tile_size
+        self._hud_w     = hud_width
 
         screen_w, screen_h = screen.get_size()
         play_w = screen_w - hud_width
@@ -61,7 +63,7 @@ class Renderer:
         self._offset_x: int = (play_w - maze_cols * tile_size) // 2
         self._offset_y: int = (screen_h - maze_rows * tile_size) // 2
 
-        self._font_hud = pygame.font.SysFont("monospace", 20, bold=True)
+        self._font_hud   = pygame.font.SysFont("monospace", 20, bold=True)
         self._font_small = pygame.font.SysFont("monospace", 14)
         self._font_title = pygame.font.SysFont("monospace", 28, bold=True)
 
@@ -127,13 +129,11 @@ class Renderer:
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x, y), (x + t, y), wall_thickness)
                 if not (cell & SOUTH):
-                    pygame.draw.line(
-                        self._screen, WALL_BLUE, (x, y + t), (x + t, y + t),
-                        wall_thickness)
+                    pygame.draw.line(self._screen, WALL_BLUE,
+                                     (x, y + t), (x + t, y + t), wall_thickness)
                 if not (cell & EAST):
-                    pygame.draw.line(
-                        self._screen, WALL_BLUE, (x + t, y), (x + t, y + t),
-                        wall_thickness)
+                    pygame.draw.line(self._screen, WALL_BLUE,
+                                     (x + t, y), (x + t, y + t), wall_thickness)
                 if not (cell & WEST):
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x, y), (x, y + t), wall_thickness)
@@ -194,6 +194,84 @@ class Renderer:
                 line = self._font_small.render(f"  {cheat}", True, YELLOW)
                 self._screen.blit(line, (x, y))
                 y += 16
+
+    def draw_player(
+        self,
+        row: int,
+        col: int,
+        prev_row: int,
+        prev_col: int,
+        progress: float,
+        direction: str,
+        mouth_angle: float,
+        is_dying: bool = False,
+        death_progress: float = 0.0,
+    ) -> None:
+        """Draw Pac-Man with smooth inter-tile animation.
+
+        Args:
+            row:            Current tile row.
+            col:            Current tile column.
+            prev_row:       Previous tile row (animation source).
+            prev_col:       Previous tile column (animation source).
+            progress:       Animation progress 0.0->1.0 between tiles.
+            direction:      Facing direction N/S/E/W (controls mouth rotation).
+            mouth_angle:    Current mouth opening in degrees (0=closed, 45=open).
+            is_dying:       True if death animation is playing.
+            death_progress: 0.0->1.0 progress through death animation.
+        """
+        # Interpolate pixel position between prev tile and current tile
+        cx0, cy0 = self.tile_center(prev_row, prev_col)
+        cx1, cy1 = self.tile_center(row, col)
+        px = int(cx0 + (cx1 - cx0) * progress)
+        py = int(cy0 + (cy1 - cy0) * progress)
+
+        radius = max(4, self._tile // 2 - 2)
+
+        if is_dying:
+            # Death animation: shrink and fade to red
+            shrink = 1.0 - death_progress
+            r = max(2, int(radius * shrink))
+            colour = (
+                255,
+                int(255 * shrink),
+                0,
+            )
+            pygame.draw.circle(self._screen, colour, (px, py), r)
+            return
+
+        # Rotation angle based on direction
+        dir_angles: dict[str, float] = {
+            "E":  0.0,
+            "W":  180.0,
+            "N":  90.0,
+            "S":  270.0,
+        }
+        base_angle = dir_angles.get(direction, 0.0)
+
+        # Draw Pac-Man as a filled arc (pie slice)
+        # We draw a full circle then overdraw the mouth wedge in floor colour
+        pygame.draw.circle(self._screen, YELLOW, (px, py), radius)
+
+        if mouth_angle > 1.0:
+            start_rad = math.radians(base_angle + mouth_angle)
+            end_rad   = math.radians(base_angle - mouth_angle)
+            points = [(px, py)]
+            steps = 8
+            for i in range(steps + 1):
+                angle = start_rad + (end_rad - start_rad) * i / steps
+                points.append((
+                    px + int(radius * math.cos(angle)),
+                    py - int(radius * math.sin(angle)),
+                ))
+            if len(points) >= 3:
+                pygame.draw.polygon(self._screen, FLOOR, points)
+
+        # Eye
+        eye_offset_angle = math.radians(base_angle + 60)
+        eye_x = px + int(radius * 0.45 * math.cos(eye_offset_angle))
+        eye_y = py - int(radius * 0.45 * math.sin(eye_offset_angle))
+        pygame.draw.circle(self._screen, BLACK, (eye_x, eye_y), max(2, radius // 6))
 
     def draw_debug_overlay(self, fps: float) -> None:
         """Draw FPS counter in top-left corner (debug/cheat mode only).
