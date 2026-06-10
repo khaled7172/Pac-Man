@@ -1,1 +1,2 @@
-# Pac-Man
+*This project was created as part of the 42 curriculum by khhammou, mkhanji*
+

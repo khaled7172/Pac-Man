@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+en/
+venv/
+.venv/
+env/
+
+# Type checking / linting
+.mypy_cache/
+.flake8
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Game runtime files
+highscores.json
+
+# OS
+.DS_Store
+Thumbs.db
