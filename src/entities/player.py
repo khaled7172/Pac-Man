@@ -10,22 +10,22 @@ from src.maze.loader import can_move
 
 # Direction vectors: (row_delta, col_delta)
 DIRECTION_VECTORS: dict[str, tuple[int, int]] = {
-    "N": (-1,  0),
-    "S": ( 1,  0),
-    "E": ( 0,  1),
-    "W": ( 0, -1),
+    "N": (-1, 0),
+    "S": (1, 0),
+    "E": (0, 1),
+    "W": (0, -1),
 }
 
 # Key -> direction mapping
 KEY_MAP: dict[int, str] = {
-    pygame.K_UP:    "N",
-    pygame.K_w:     "N",
-    pygame.K_DOWN:  "S",
-    pygame.K_s:     "S",
+    pygame.K_UP: "N",
+    pygame.K_w: "N",
+    pygame.K_DOWN: "S",
+    pygame.K_s: "S",
     pygame.K_RIGHT: "E",
-    pygame.K_d:     "E",
-    pygame.K_LEFT:  "W",
-    pygame.K_a:     "W",
+    pygame.K_d: "E",
+    pygame.K_LEFT: "W",
+    pygame.K_a: "W",
 }
 
 
@@ -65,7 +65,7 @@ class Player:
 
         # Current facing direction and buffered next direction
         self._direction: str = "E"
-        self._buffered:  str = "E"
+        self._buffered: str = "E"
 
         # Animation progress 0.0 (at prev tile) -> 1.0 (at current tile)
         self._progress: float = 1.0   # start at rest
@@ -85,7 +85,7 @@ class Player:
         self._mouth_open: bool = True
         self._mouth_speed: float = 8.0   # degrees per frame tick
 
-    # ── Properties ────────────────────────────────────────────────────────────
+    # ── Properties ──────────────────────────────────────────────────────────
 
     @property
     def direction(self) -> str:
@@ -112,7 +112,7 @@ class Player:
         """Previous tile column (animation source)."""
         return self._prev_col
 
-    # ── Input ─────────────────────────────────────────────────────────────────
+    # ── Input ───────────────────────────────────────────────────────────────
 
     def handle_keydown(self, key: int) -> None:
         """Buffer a direction change from a keypress.
@@ -123,7 +123,7 @@ class Player:
         if key in KEY_MAP:
             self._buffered = KEY_MAP[key]
 
-    # ── Update ────────────────────────────────────────────────────────────────
+    # ── Update ──────────────────────────────────────────────────────────────
 
     def update(self, dt: float, grid: list[list[int]]) -> None:
         """Advance player state by one frame.
@@ -162,8 +162,8 @@ class Player:
                 self.row += dr
                 self.col += dc
                 self._direction = direction
-                self._buffered  = direction
-                self._progress  = 0.0
+                self._buffered = direction
+                self._progress = 0.0
                 return
         # Blocked in all relevant directions — stay put
 
@@ -196,7 +196,7 @@ class Player:
             self._dying = False
             self._death_timer = 0.0
 
-    # ── Game events ───────────────────────────────────────────────────────────
+    # ── Game events ─────────────────────────────────────────────────────────
 
     def die(self) -> None:
         """Trigger death: lose a life and start death animation."""
@@ -210,14 +210,14 @@ class Player:
 
     def respawn(self) -> None:
         """Respawn at the maze center after death animation completes."""
-        self.row       = self._spawn_row
-        self.col       = self._spawn_col
+        self.row = self._spawn_row
+        self.col = self._spawn_col
         self._prev_row = self._spawn_row
         self._prev_col = self._spawn_col
         self._direction = "E"
-        self._buffered  = "E"
-        self._progress  = 1.0
-        self._dying     = False
+        self._buffered = "E"
+        self._progress = 1.0
+        self._dying = False
 
     def get_mouth_angle(self) -> float:
         """Return current mouth opening angle in degrees (0=closed, 45=open).

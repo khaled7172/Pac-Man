@@ -20,19 +20,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ── Constants ───────────────────────────────────────────────────────────
 
-WINDOW_W:  int = 900
-WINDOW_H:  int = 700
-HUD_W:     int = 200
+WINDOW_W: int = 900
+WINDOW_H: int = 700
+HUD_W: int = 200
 TILE_SIZE: int = 32
-FPS:       int = 60
-TITLE:     str = "Pac-Man"
+FPS: int = 60
+TITLE: str = "Pac-Man"
 
 
 def main() -> None:
     """Parse arguments, load config, open window, run game loop."""
-    # ── Args ──────────────────────────────────────────────────────────────────
+    # ── Args ────────────────────────────────────────────────────────────────
     if len(sys.argv) != 2:
         print("Usage: python3 pac-man.py <config.json>")
         sys.exit(1)
@@ -42,7 +42,7 @@ def main() -> None:
         print(f"Error: '{config_path}' is not a .json file")
         sys.exit(1)
 
-    # ── Config ────────────────────────────────────────────────────────────────
+    # ── Config ──────────────────────────────────────────────────────────────
     config = load_config(config_path)
     logger.info(
         "Config loaded — %d levels, %d lives",
@@ -50,7 +50,7 @@ def main() -> None:
         config["lives"],
     )
 
-    # ── Maze (level 1, fixed seed) ────────────────────────────────────────────
+    # ── Maze (level 1, fixed seed) ──────────────────────────────────────────
     level_cfg = config["levels"][0]
     try:
         grid = generate_maze(
@@ -66,14 +66,14 @@ def main() -> None:
     maze_cols = len(grid[0])
     center_row, center_col = get_center(grid)
 
-    # ── Player ────────────────────────────────────────────────────────────────
+    # ── Player ──────────────────────────────────────────────────────────────
     player = Player(
         start_row=center_row,
         start_col=center_col,
         lives=config["lives"],
     )
 
-    # ── Pygame init ───────────────────────────────────────────────────────────
+    # ── Pygame init ─────────────────────────────────────────────────────────
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
     pygame.display.set_caption(TITLE)
@@ -89,17 +89,17 @@ def main() -> None:
 
     logger.info("Window opened — arrow keys / WASD to move, ESC to quit")
 
-    # ── Game state ────────────────────────────────────────────────────────────
-    score:     int   = 0
-    level:     int   = 1
+    # ── Game state ──────────────────────────────────────────────────────────
+    score: int = 0
+    level: int = 1
     time_left: float = float(config["level_max_time"])
 
-    # ── Game loop ─────────────────────────────────────────────────────────────
+    # ── Game loop ───────────────────────────────────────────────────────────
     running: bool = True
     while running:
         dt = clock.tick(FPS) / 1000.0
 
-        # ── Events ────────────────────────────────────────────────────────────
+        # ── Events ───────────────────────────────────────────────────────────
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -108,7 +108,7 @@ def main() -> None:
                     running = False
                 player.handle_keydown(event.key)
 
-        # ── Update ────────────────────────────────────────────────────────────
+        # ── Update ───────────────────────────────────────────────────────────
         player.update(dt, grid)
 
         # Handle death animation finishing — respawn
@@ -119,7 +119,7 @@ def main() -> None:
 
         time_left = max(0.0, time_left - dt)
 
-        # ── Draw ──────────────────────────────────────────────────────────────
+        # ── Draw ─────────────────────────────────────────────────────────────
         renderer.clear()
         renderer.draw_maze(grid)
         renderer.draw_player(
