@@ -14,7 +14,7 @@ import random
 from enum import Enum, auto
 from typing import Optional
 
-from src.maze.loader import can_move, get_walkable_cells
+from src.maze.loader import can_move
 
 DIRECTION_VECTORS: dict[str, tuple[int, int]] = {
     "N": (-1, 0),
@@ -132,6 +132,16 @@ class Ghost:
     def anim_frame(self) -> int:
         """Current walk-cycle animation frame (0 or 1)."""
         return self._anim_frame
+
+    @property
+    def spawn_row(self) -> int:
+        """Spawn corner row position."""
+        return self._spawn_row
+
+    @property
+    def spawn_col(self) -> int:
+        """Spawn corner column position."""
+        return self._spawn_col
 
     # ── State transitions ───────────────────────────────────────────────────
 

@@ -132,7 +132,18 @@ def can_move(
     # Actually from _generate_maze: maze[y][x] = 15 & ~from_code
     # 15 = all open, clearing a bit CLOSES that passage.
     # So: bit SET = wall open (passage), bit CLEAR = wall closed.
-    return bool(cell & bit)
+    if not bool(cell & bit):
+        return False
+    # Verify destination cell is not a border or out of bounds
+    deltas: dict[str, tuple[int, int]] = {
+        'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1),
+    }
+    dr, dc = deltas[direction]
+    dest_r, dest_c = row + dr, col + dc
+    if (dest_r <= 0 or dest_r >= rows - 1
+            or dest_c <= 0 or dest_c >= cols - 1):
+        return False
+    return True
 
 
 def get_walkable_cells(grid: list[list[int]]) -> list[tuple[int, int]]:

@@ -4,8 +4,8 @@ CONFIG = config.json
 WHL    = vendor/mazegenerator-00001-py3-none-any.whl
 
 install:
-	pip install -r requirements.txt
-	pip install $(WHL)
+	pip install -r requirements.txt --break-system-packages
+	pip install $(WHL) --break-system-packages
 
 run:
 	$(PYTHON) $(MAIN) $(CONFIG)

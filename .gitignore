@@ -13,7 +13,6 @@ env/
 
 # Type checking / linting
 .mypy_cache/
-.flake8
 
 # Build / packaging
 build/

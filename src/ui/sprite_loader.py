@@ -85,13 +85,16 @@ def load_pacman_sprites(
 
     sprites: dict[str, list[pygame.Surface]] = {"death": death}
 
-    for direction, angle in DIR_ROTATION.items():
-        if angle == 0.0:
-            sprites[direction] = base
-        else:
-            sprites[direction] = [
-                pygame.transform.rotate(f, angle) for f in base
-            ]
+    sprites["E"] = base
+    sprites["W"] = [
+        pygame.transform.flip(f, True, False) for f in base
+    ]
+    sprites["N"] = [
+        pygame.transform.rotate(f, 90.0) for f in base
+    ]
+    sprites["S"] = [
+        pygame.transform.rotate(f, -90.0) for f in base
+    ]
 
     return sprites
 
