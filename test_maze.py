@@ -12,7 +12,13 @@ What it does:
     5. Tests error handling with a bad size.
 """
 
-from maze.loader import (
+import sys
+import os
+
+# Make sure we can import from src/ when running from project root
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from maze.loader import (  # noqa: E402
     generate_maze,
     is_wall,
     can_move,
@@ -20,11 +26,6 @@ from maze.loader import (
     get_center,
     get_corners,
 )
-import sys
-import os
-
-# Make sure we can import from src/ when running from project root
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 
 # ── ASCII rendering ──────────────────────────────────────────────────────────

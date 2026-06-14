@@ -110,7 +110,6 @@ def can_move(
     Raises:
         ValueError: If direction is not one of N/S/E/W.
     """
-    cell = grid[row][col]
     mapping: dict[str, int] = {
         'N': NORTH,
         'E': EAST,
@@ -120,6 +119,13 @@ def can_move(
     if direction not in mapping:
         raise ValueError(f"Invalid direction '{direction}'. Use N, S, E, W.")
 
+    # Out-of-bounds → treat as wall
+    rows = len(grid)
+    cols = len(grid[0]) if rows > 0 else 0
+    if row < 0 or row >= rows or col < 0 or col >= cols:
+        return False
+
+    cell = grid[row][col]
     bit = mapping[direction]
     # Wall is OPEN when the bit is NOT set (0 = wall closed, bit clear = open)
     # Re-reading the source: bit set means wall present on that side?
