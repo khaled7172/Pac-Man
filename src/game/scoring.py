@@ -73,7 +73,7 @@ class Scoring:
             Points awarded for this ghost.
         """
         multiplier = 2 ** self._ghost_combo
-        pts = self._pts_ghost_base * multiplier
+        pts: int = int(self._pts_ghost_base * multiplier)
         self._score += pts
         self._ghost_combo = min(self._ghost_combo + 1, 3)
         return pts

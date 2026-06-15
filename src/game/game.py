@@ -1,8 +1,15 @@
-"""src/game/game.py — Core game class with state machine.
+"""src/game/game.py — Core game class with full state machine.
 
-Manages the complete game lifecycle: main menu, gameplay, pause,
-game over, and victory screens.  All game logic is coordinated here.
+Manages the complete game lifecycle:
+    MAIN_MENU → PLAYING → PAUSED → GAME_OVER / VICTORY
+                       → VIEW_HIGHSCORES
+                       → INSTRUCTIONS
+
+All game logic is coordinated here.  Menus are rendered by MenuRenderer
+and highscores are persisted by HighscoreManager.
 """
+
+from __future__ import annotations
 
 import logging
 from enum import Enum, auto
@@ -12,19 +19,26 @@ import pygame
 
 from src.game.level import Level
 from src.game.scoring import Scoring
+from src.game.cheats import CheatManager
+from src.highscore.manager import HighscoreManager
 from src.maze.loader import get_center, get_corners
 from src.entities.player import Player
 from src.entities.ghost import Ghost, GhostState
 from src.ui.renderer import Renderer
+from src.ui.menu import MenuRenderer
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ───────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────────
 
 HUD_W: int = 200
 TILE_SIZE: int = 32
 FPS: int = 60
 GHOST_COLOURS: list[str] = ["red", "pink", "cyan", "orange"]
+HIGHSCORE_FILE: str = "highscores.json"
+
+# Cursor blink period for name-entry (seconds)
+_CURSOR_BLINK: float = 0.5
 
 
 class GameState(Enum):
@@ -35,6 +49,8 @@ class GameState(Enum):
     PAUSED = auto()
     GAME_OVER = auto()
     VICTORY = auto()
+    VIEW_HIGHSCORES = auto()
+    INSTRUCTIONS = auto()
 
 
 class Game:
@@ -60,14 +76,10 @@ class Game:
         self._state = GameState.MAIN_MENU
         self._running: bool = True
 
-        # Fonts
-        self._font_large = pygame.font.SysFont(
-            "monospace", 48, bold=True,
-        )
-        self._font_med = pygame.font.SysFont(
-            "monospace", 28, bold=True,
-        )
-        self._font_small = pygame.font.SysFont("monospace", 18)
+        # Sub-systems
+        self._menu = MenuRenderer()
+        self._cheats = CheatManager()
+        self._highscores = HighscoreManager(HIGHSCORE_FILE)
 
         # Scoring (re-created on each new game)
         self._scoring = Scoring(
@@ -97,14 +109,21 @@ class Game:
         self._menu_sel: int = 0
         self._pause_sel: int = 0
 
-    # ── Properties ──────────────────────────────────────────────────────
+        # Name entry for highscore
+        self._name_buffer: str = ""
+        self._cursor_timer: float = 0.0
+        self._cursor_visible: bool = True
+        self._entry_score: int = 0   # score to submit after name entry
+        self._awaiting_name: bool = False   # True during name-entry phase
+
+    # ── Properties ───────────────────────────────────────────────────────────
 
     @property
     def state(self) -> GameState:
         """Current game state."""
         return self._state
 
-    # ── Main loop ───────────────────────────────────────────────────────
+    # ── Main loop ────────────────────────────────────────────────────────────
 
     def run(self) -> None:
         """Run the main loop until the player quits."""
@@ -116,7 +135,7 @@ class Game:
             self._draw()
             pygame.display.flip()
 
-    # ── Event routing ───────────────────────────────────────────────────
+    # ── Event routing ────────────────────────────────────────────────────────
 
     def _handle_events(self) -> None:
         """Poll pygame events and route to the active state."""
@@ -124,13 +143,14 @@ class Game:
             if event.type == pygame.QUIT:
                 self._running = False
             elif event.type == pygame.KEYDOWN:
-                self._on_key(event.key)
+                self._on_key(event.key, event.unicode)
 
-    def _on_key(self, key: int) -> None:
+    def _on_key(self, key: int, unicode_char: str = "") -> None:
         """Route a single keypress to the current state handler.
 
         Args:
-            key: pygame key constant.
+            key:          pygame key constant.
+            unicode_char: Unicode character for text input.
         """
         handler = {
             GameState.MAIN_MENU: self._key_menu,
@@ -138,48 +158,68 @@ class Game:
             GameState.PAUSED: self._key_pause,
             GameState.GAME_OVER: self._key_endscreen,
             GameState.VICTORY: self._key_endscreen,
+            GameState.VIEW_HIGHSCORES: self._key_back,
+            GameState.INSTRUCTIONS: self._key_back,
         }.get(self._state)
         if handler:
-            handler(key)
+            handler(key, unicode_char)
 
-    # ── Key handlers ────────────────────────────────────────────────────
+    # ── Key handlers ─────────────────────────────────────────────────────────
 
-    def _key_menu(self, key: int) -> None:
+    def _key_menu(self, key: int, _unicode: str = "") -> None:
         """Handle main-menu navigation.
 
         Args:
-            key: pygame key constant.
+            key:     pygame key constant.
+            _unicode: Unused.
         """
+        num_options = 4  # Start, Highscores, Instructions, Exit
         if key in (pygame.K_UP, pygame.K_w):
-            self._menu_sel = max(0, self._menu_sel - 1)
+            self._menu_sel = (self._menu_sel - 1) % num_options
         elif key in (pygame.K_DOWN, pygame.K_s):
-            self._menu_sel = min(1, self._menu_sel + 1)
+            self._menu_sel = (self._menu_sel + 1) % num_options
         elif key == pygame.K_RETURN:
             if self._menu_sel == 0:
                 self._start_game()
+            elif self._menu_sel == 1:
+                self._state = GameState.VIEW_HIGHSCORES
+                logger.info("Viewing highscores")
+            elif self._menu_sel == 2:
+                self._state = GameState.INSTRUCTIONS
+                logger.info("Viewing instructions")
             else:
                 self._running = False
         elif key == pygame.K_ESCAPE:
             self._running = False
 
-    def _key_playing(self, key: int) -> None:
-        """Handle gameplay keypresses (movement + pause).
+    def _key_playing(self, key: int, _unicode: str = "") -> None:
+        """Handle gameplay keypresses (movement, pause, cheats).
 
         Args:
-            key: pygame key constant.
+            key:     pygame key constant.
+            _unicode: Unused.
         """
         if key in (pygame.K_ESCAPE, pygame.K_p):
             self._state = GameState.PAUSED
             self._pause_sel = 0
             logger.info("Game paused")
-        elif self._player is not None:
+            return
+
+        # Try cheat keys first
+        cheat_name = self._cheats.handle_key(key, self)
+        if cheat_name is not None:
+            return
+
+        # Otherwise forward to player
+        if self._player is not None:
             self._player.handle_keydown(key)
 
-    def _key_pause(self, key: int) -> None:
+    def _key_pause(self, key: int, _unicode: str = "") -> None:
         """Handle pause-menu navigation.
 
         Args:
-            key: pygame key constant.
+            key:     pygame key constant.
+            _unicode: Unused.
         """
         if key in (pygame.K_ESCAPE, pygame.K_p):
             self._state = GameState.PLAYING
@@ -197,29 +237,55 @@ class Game:
                 self._menu_sel = 0
                 logger.info("Returned to main menu")
 
-    def _key_endscreen(self, key: int) -> None:
-        """Handle game-over / victory screen (any key → menu).
+    def _key_endscreen(self, key: int, unicode_char: str = "") -> None:
+        """Handle game-over / victory key input.
+
+        If awaiting name entry, captures typed characters.
+        ENTER submits the name and returns to menu.
+        BACKSPACE removes the last character.
 
         Args:
-            key: pygame key constant.
+            key:          pygame key constant.
+            unicode_char: Typed character for text input.
+        """
+        if self._awaiting_name:
+            if key == pygame.K_RETURN:
+                self._submit_name()
+            elif key == pygame.K_BACKSPACE:
+                self._name_buffer = self._name_buffer[:-1]
+            elif (
+                (unicode_char.isalnum() or unicode_char == " ")
+                and len(self._name_buffer) < 10
+            ):
+                self._name_buffer += unicode_char
+        else:
+            if key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                self._state = GameState.MAIN_MENU
+                self._menu_sel = 0
+
+    def _key_back(self, key: int, _unicode: str = "") -> None:
+        """Return to main menu from any informational screen.
+
+        Args:
+            key:     pygame key constant.
+            _unicode: Unused.
         """
         if key in (pygame.K_RETURN, pygame.K_ESCAPE):
             self._state = GameState.MAIN_MENU
             self._menu_sel = 0
 
-    # ── State transitions ───────────────────────────────────────────────
+    # ── State transitions ─────────────────────────────────────────────────────
 
     def _start_game(self) -> None:
         """Begin a new game from level 1."""
         self._level_idx = 0
         self._scoring = Scoring(
             points_per_pacgum=self._config["points_per_pacgum"],
-            points_per_super_pacgum=self._config[
-                "points_per_super_pacgum"
-            ],
+            points_per_super_pacgum=self._config["points_per_super_pacgum"],
             points_per_ghost=self._config["points_per_ghost"],
         )
         self._was_dying = False
+        self._cheats.reset()
         self._load_level(0, self._config["lives"])
         self._state = GameState.PLAYING
         logger.info("New game started — level 1")
@@ -235,9 +301,7 @@ class Game:
         self._level = Level(
             cfg=lvl_cfg,
             points_per_pacgum=self._config["points_per_pacgum"],
-            points_per_super_pacgum=self._config[
-                "points_per_super_pacgum"
-            ],
+            points_per_super_pacgum=self._config["points_per_super_pacgum"],
             max_time=float(self._config["level_max_time"]),
         )
         center_r, center_c = get_center(self._level.grid)
@@ -246,6 +310,11 @@ class Game:
             start_col=center_c,
             lives=lives,
         )
+
+        # Apply speed boost if cheat is active
+        if self._cheats.speed_boost:
+            self._player._speed = CheatManager._BOOST_SPEED
+
         self._ghosts = self._make_ghosts(self._level.grid)
 
         maze_rows = len(self._level.grid)
@@ -271,9 +340,7 @@ class Game:
             idx + 1, len(self._level.pellets), lvl_cfg["seed"],
         )
 
-    def _make_ghosts(
-        self, grid: list[list[int]],
-    ) -> list[Ghost]:
+    def _make_ghosts(self, grid: list[list[int]]) -> list[Ghost]:
         """Spawn 4 ghosts, one per corner of the maze.
 
         Args:
@@ -302,7 +369,37 @@ class Game:
             )
         return ghosts
 
-    # ── Update routing ──────────────────────────────────────────────────
+    def _enter_end_state(self, state: GameState) -> None:
+        """Transition to GAME_OVER or VICTORY and prepare name entry.
+
+        Args:
+            state: GameState.GAME_OVER or GameState.VICTORY.
+        """
+        self._state = state
+        self._entry_score = self._scoring.score
+        self._name_buffer = ""
+        self._cursor_timer = 0.0
+        self._cursor_visible = True
+        self._awaiting_name = self._highscores.is_high_score(
+            self._entry_score
+        )
+        logger.info(
+            "%s — score: %d, high score: %s",
+            state.name, self._entry_score, self._awaiting_name,
+        )
+
+    def _submit_name(self) -> None:
+        """Submit the typed name to the highscore table and return to menu."""
+        name = self._name_buffer.strip() or "PLAYER"
+        added = self._highscores.add_score(name, self._entry_score)
+        logger.info(
+            "Name submitted: %r  score: %d  added: %s",
+            name, self._entry_score, added,
+        )
+        self._state = GameState.MAIN_MENU
+        self._menu_sel = 0
+
+    # ── Update routing ────────────────────────────────────────────────────────
 
     def _update(self, dt: float) -> None:
         """Route update to the current state handler.
@@ -310,10 +407,14 @@ class Game:
         Args:
             dt: Delta time in seconds since last frame.
         """
+        self._menu.update(dt)
+
         if self._state == GameState.PLAYING:
             self._update_playing(dt)
+        elif self._state in (GameState.GAME_OVER, GameState.VICTORY):
+            self._update_endscreen(dt)
 
-    # ── Gameplay update ─────────────────────────────────────────────────
+    # ── Gameplay update ───────────────────────────────────────────────────────
 
     def _update_playing(self, dt: float) -> None:
         """Update gameplay: movement, collisions, transitions.
@@ -344,8 +445,9 @@ class Game:
         # ── Entity updates ───────────────────────────────────────────
         level.update(dt)
         player.update(dt, level.grid)
-        for ghost in self._ghosts:
-            ghost.update(dt, level.grid, player.row, player.col)
+        if not self._cheats.ghost_freeze:
+            for ghost in self._ghosts:
+                ghost.update(dt, level.grid, player.row, player.col)
 
         # ── Collisions ───────────────────────────────────────────────
         if not player.is_dying:
@@ -354,10 +456,7 @@ class Game:
 
         # ── Transitions ──────────────────────────────────────────────
         if not player.alive:
-            self._state = GameState.GAME_OVER
-            logger.info(
-                "Game Over. Score: %d", self._scoring.score,
-            )
+            self._enter_end_state(GameState.GAME_OVER)
         elif level.complete:
             self._advance_level()
         elif level.time_expired:
@@ -398,20 +497,30 @@ class Game:
         for ghost in self._ghosts:
             if ghost.eaten:
                 continue
+
+            # Current-tile collision
             same_tile = (
                 ghost.row == player.row
                 and ghost.col == player.col
             )
-            if not same_tile:
+            # Cross-tile collision (ghosts and player swap tiles in one frame)
+            cross_tile = (
+                ghost.row == player.prev_row
+                and ghost.col == player.prev_col
+                and ghost.prev_row == player.row
+                and ghost.prev_col == player.col
+            )
+
+            if not (same_tile or cross_tile):
                 continue
+
             if ghost.edible:
                 ghost.be_eaten()
                 self._scoring.eat_ghost()
                 logger.info(
-                    "Ghost eaten! Score: %d",
-                    self._scoring.score,
+                    "Ghost eaten! Score: %d", self._scoring.score,
                 )
-            else:
+            elif not self._cheats.invincible:
                 player.die()
                 self._scoring.reset_ghost_combo()
                 logger.info(
@@ -423,18 +532,13 @@ class Game:
         """Move to the next level, or trigger victory."""
         self._level_idx += 1
         if self._level_idx >= len(self._config["levels"]):
-            self._state = GameState.VICTORY
-            logger.info(
-                "All levels complete! Score: %d",
-                self._scoring.score,
-            )
+            self._enter_end_state(GameState.VICTORY)
         else:
             lives = 0
             if self._player is not None:
                 lives = self._player.lives
             logger.info(
-                "Level complete! Loading level %d…",
-                self._level_idx + 1,
+                "Level complete! Loading level %d…", self._level_idx + 1,
             )
             self._load_level(self._level_idx, lives)
 
@@ -444,10 +548,10 @@ class Game:
         if player is None:
             return
         logger.info("Time up! Losing a life.")
-        player.die()
+        if not self._cheats.invincible:
+            player.die()
         if not player.alive:
-            self._state = GameState.GAME_OVER
-            logger.info("Game Over — no lives left.")
+            self._enter_end_state(GameState.GAME_OVER)
         else:
             self._load_level(self._level_idx, player.lives)
 
@@ -462,9 +566,7 @@ class Game:
             self._anim_timer = 0.0
             self._anim_frame = (self._anim_frame + 1) % 3
             if self._player and self._player.is_dying:
-                self._death_frame = min(
-                    self._death_frame + 1, 3,
-                )
+                self._death_frame = min(self._death_frame + 1, 3)
             else:
                 self._death_frame = 0
 
@@ -473,23 +575,54 @@ class Game:
             self._coin_timer = 0.0
             self._coin_frame = (self._coin_frame + 1) % 8
 
-    # ── Draw routing ────────────────────────────────────────────────────
+    def _update_endscreen(self, dt: float) -> None:
+        """Blink the name-entry cursor.
+
+        Args:
+            dt: Delta time in seconds.
+        """
+        if not self._awaiting_name:
+            return
+        self._cursor_timer += dt
+        if self._cursor_timer >= _CURSOR_BLINK:
+            self._cursor_timer = 0.0
+            self._cursor_visible = not self._cursor_visible
+
+    # ── Draw routing ──────────────────────────────────────────────────────────
 
     def _draw(self) -> None:
         """Route drawing to the current state handler."""
         if self._state == GameState.MAIN_MENU:
-            self._draw_menu()
+            self._menu.draw_main_menu(self._screen, self._menu_sel)
         elif self._state == GameState.PLAYING:
             self._draw_game()
         elif self._state == GameState.PAUSED:
             self._draw_game()
-            self._draw_pause()
+            self._menu.draw_pause_menu(self._screen, self._pause_sel)
         elif self._state == GameState.GAME_OVER:
-            self._draw_end("GAME OVER", (220, 50, 50))
+            self._menu.draw_game_over(
+                self._screen,
+                self._entry_score,
+                self._name_buffer,
+                self._cursor_visible,
+                self._awaiting_name,
+            )
         elif self._state == GameState.VICTORY:
-            self._draw_end("YOU WIN!", (50, 220, 50))
+            self._menu.draw_victory(
+                self._screen,
+                self._entry_score,
+                self._name_buffer,
+                self._cursor_visible,
+                self._awaiting_name,
+            )
+        elif self._state == GameState.VIEW_HIGHSCORES:
+            self._menu.draw_highscores(
+                self._screen, self._highscores.get_top10(),
+            )
+        elif self._state == GameState.INSTRUCTIONS:
+            self._menu.draw_instructions(self._screen)
 
-    # ── Gameplay drawing ────────────────────────────────────────────────
+    # ── Gameplay drawing ──────────────────────────────────────────────────────
 
     def _draw_game(self) -> None:
         """Draw the active gameplay frame."""
@@ -554,110 +687,6 @@ class Game:
             lives=player.lives,
             level=self._level_idx + 1,
             time_left=level.time_left,
+            cheats_active=self._cheats.active_cheats or None,
         )
         rdr.draw_debug_overlay(self._clock.get_fps())
-
-    # ── Menu / overlay drawing ──────────────────────────────────────────
-
-    def _draw_menu(self) -> None:
-        """Draw the main menu (placeholder — Phase 2 will polish)."""
-        self._screen.fill((0, 0, 40))
-        sw, sh = self._screen.get_size()
-        cx = sw // 2
-
-        title = self._font_large.render(
-            "PAC-MAN", True, (255, 220, 0),
-        )
-        self._screen.blit(
-            title, title.get_rect(center=(cx, sh // 4)),
-        )
-
-        opts = ["Start Game", "Exit"]
-        for i, label in enumerate(opts):
-            sel = i == self._menu_sel
-            clr = (255, 255, 255) if sel else (120, 120, 120)
-            pfx = "> " if sel else "  "
-            surf = self._font_med.render(
-                f"{pfx}{label}", True, clr,
-            )
-            self._screen.blit(
-                surf, surf.get_rect(
-                    center=(cx, sh // 2 + i * 50),
-                ),
-            )
-
-        hint = self._font_small.render(
-            "Arrow keys to select, ENTER to confirm",
-            True, (100, 100, 100),
-        )
-        self._screen.blit(
-            hint, hint.get_rect(center=(cx, sh - 60)),
-        )
-
-    def _draw_pause(self) -> None:
-        """Draw semi-transparent pause overlay on top of the game."""
-        sw, sh = self._screen.get_size()
-
-        overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self._screen.blit(overlay, (0, 0))
-
-        cx = sw // 2
-        title = self._font_large.render(
-            "PAUSED", True, (255, 220, 0),
-        )
-        self._screen.blit(
-            title, title.get_rect(center=(cx, sh // 3)),
-        )
-
-        opts = ["Resume", "Main Menu"]
-        for i, label in enumerate(opts):
-            sel = i == self._pause_sel
-            clr = (255, 255, 255) if sel else (120, 120, 120)
-            pfx = "> " if sel else "  "
-            surf = self._font_med.render(
-                f"{pfx}{label}", True, clr,
-            )
-            self._screen.blit(
-                surf, surf.get_rect(
-                    center=(cx, sh // 2 + i * 50),
-                ),
-            )
-
-    def _draw_end(
-        self,
-        title_text: str,
-        colour: tuple[int, int, int],
-    ) -> None:
-        """Draw game-over or victory screen.
-
-        Args:
-            title_text: Main heading text.
-            colour:     Colour for the heading.
-        """
-        self._screen.fill((0, 0, 40))
-        sw, sh = self._screen.get_size()
-        cx = sw // 2
-
-        title = self._font_large.render(
-            title_text, True, colour,
-        )
-        self._screen.blit(
-            title, title.get_rect(center=(cx, sh // 3)),
-        )
-
-        score = self._font_med.render(
-            f"Score: {self._scoring.score}",
-            True, (255, 255, 255),
-        )
-        self._screen.blit(
-            score, score.get_rect(center=(cx, sh // 2)),
-        )
-
-        hint = self._font_small.render(
-            "Press ENTER to return to menu",
-            True, (150, 150, 150),
-        )
-        self._screen.blit(
-            hint, hint.get_rect(center=(cx, sh * 2 // 3)),
-        )

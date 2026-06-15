@@ -1,12 +1,14 @@
 """Maze loader — wraps the assigned A-Maze-ing package (mazegenerator 2.0.2).
 
 The maze is a list[list[int]] where each cell is a bitmask:
-    bit 0 (1)  → North wall is OPEN (passage to the north exists)
-    bit 1 (2)  → East  wall is OPEN
-    bit 2 (4)  → South wall is OPEN
-    bit 3 (8)  → West  wall is OPEN
-    0          → fully closed (solid wall / border)
-    15         → fully open (4-way corridor)
+    bit 0 (1)  → North wall is PRESENT (passage to the north is blocked)
+    bit 1 (2)  → East  wall is PRESENT
+    bit 2 (4)  → South wall is PRESENT
+    bit 3 (8)  → West  wall is PRESENT
+    0          → fully open (no walls — 4-way corridor)
+    15         → fully closed (walls on all four sides)
+
+The generator clears bits to open passages (maze[y][x] &= ~code).
 
 We always use perfect=False so the maze has loops (required for Pac-Man).
 """
@@ -16,13 +18,13 @@ from typing import cast
 from mazegenerator import MazeGenerator
 
 
-# Bitmask constants — use these everywhere instead of magic numbers
+# Bitmask constants — bit SET means wall present on that side
 NORTH: int = 1
 EAST: int = 2
 SOUTH: int = 4
 WEST: int = 8
-WALL: int = 0       # solid wall cell
-OPEN: int = 15      # fully open cell
+ALL_OPEN: int = 0    # no walls — fully open 4-way corridor
+ALL_WALLS: int = 15  # walls on all sides — fully closed
 
 
 def generate_maze(
@@ -60,9 +62,10 @@ def generate_maze(
 def is_wall(grid: list[list[int]], row: int, col: int) -> bool:
     """Return True if the cell at (row, col) is a solid wall.
 
-    A cell is walkable if any of its wall-bits are open (value > 0 and not
-    a pure border marker).  Border markers (1,2,4,8,9,3,12,6) on the outer
-    ring are treated as walls for gameplay purposes.
+    With the mazegenerator's bitmask convention (bit SET = wall):
+      - cell == 15 means walls on all four sides → impassable block
+      - cell == 0  means no walls at all → fully open corridor
+      - Border cells are always treated as walls.
 
     Args:
         grid: The maze grid from generate_maze().
@@ -86,8 +89,8 @@ def is_wall(grid: list[list[int]], row: int, col: int) -> bool:
     if row == 0 or row == rows - 1 or col == 0 or col == cols - 1:
         return True
 
-    # Interior cell with value 0 = solid wall
-    return cell == WALL
+    # Interior cell with all walls present (15) = solid block (e.g. "42" logo)
+    return cell == ALL_WALLS
 
 
 def can_move(
@@ -127,13 +130,13 @@ def can_move(
 
     cell = grid[row][col]
     bit = mapping[direction]
-    # Wall is OPEN when the bit is NOT set (0 = wall closed, bit clear = open)
-    # Re-reading the source: bit set means wall present on that side?
-    # Actually from _generate_maze: maze[y][x] = 15 & ~from_code
-    # 15 = all open, clearing a bit CLOSES that passage.
-    # So: bit SET = wall open (passage), bit CLEAR = wall closed.
-    if not bool(cell & bit):
-        return False
+    # mazegenerator convention (verified from library source):
+    #   bit SET   = wall present (blocked)
+    #   bit CLEAR = passage open (can move)
+    # _generate_maze clears bits with & ~code to open passages.
+    # _find_short_path skips when (cell & code) != 0 (wall).
+    if bool(cell & bit):
+        return False  # wall on that side — blocked
     # Verify destination cell is not a border or out of bounds
     deltas: dict[str, tuple[int, int]] = {
         'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1),

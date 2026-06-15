@@ -137,23 +137,24 @@ class Renderer:
                     row_idx == 0 or row_idx == rows - 1
                     or col_idx == 0 or col_idx == cols - 1
                 )
-                if is_border or cell == 0:
+                if is_border or cell == 15:
                     pygame.draw.rect(self._screen, WALL_BLUE, rect)
                     pygame.draw.rect(self._screen, WALL_BORDER, rect, 1)
                     continue
 
                 pygame.draw.rect(self._screen, FLOOR, rect)
                 x, y = rect.x, rect.y
-                if not (cell & NORTH):
+                # mazegenerator: bit SET = wall present, bit CLEAR = passage
+                if cell & NORTH:
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x, y), (x + t, y), wt)
-                if not (cell & SOUTH):
+                if cell & SOUTH:
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x, y + t), (x + t, y + t), wt)
-                if not (cell & EAST):
+                if cell & EAST:
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x + t, y), (x + t, y + t), wt)
-                if not (cell & WEST):
+                if cell & WEST:
                     pygame.draw.line(self._screen, WALL_BLUE,
                                      (x, y), (x, y + t), wt)
 
