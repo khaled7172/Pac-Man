@@ -1,3 +1,1 @@
 *This project was created as part of the 42 curriculum by khhammou, mkhanji*
-notes for me:
-use itch.io to get the sprites
