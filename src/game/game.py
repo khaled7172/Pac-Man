@@ -1,13 +1,4 @@
-"""src/game/game.py — Core game class with full state machine.
-
-Manages the complete game lifecycle:
-    MAIN_MENU → PLAYING → PAUSED → GAME_OVER / VICTORY
-                       → VIEW_HIGHSCORES
-                       → INSTRUCTIONS
-
-All game logic is coordinated here.  Menus are rendered by MenuRenderer
-and highscores are persisted by HighscoreManager.
-"""
+# game.py — main game loop and state machine
 
 from __future__ import annotations
 
@@ -23,7 +14,7 @@ from src.game.cheats import CheatManager
 from src.highscore.manager import HighscoreManager
 from src.maze.loader import get_center, get_corners
 from src.entities.player import Player
-from src.entities.ghost import Ghost, GhostState
+from src.entities.ghost import Ghost
 from src.ui.renderer import Renderer
 from src.ui.menu import MenuRenderer
 
@@ -31,19 +22,16 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-HUD_W: int = 200
-TILE_SIZE: int = 32
-FPS: int = 60
-GHOST_COLOURS: list[str] = ["red", "pink", "cyan", "orange"]
-HIGHSCORE_FILE: str = "highscores.json"
+HUD_W = 200
+TILE_SIZE = 32
+FPS = 60
+GHOST_COLOURS = ["red", "pink", "cyan", "orange"]
+HIGHSCORE_FILE = "highscores.json"
 
-# Cursor blink period for name-entry (seconds)
-_CURSOR_BLINK: float = 0.5
+_CURSOR_BLINK = 0.5  # cursor blink speed for name entry
 
 
 class GameState(Enum):
-    """Possible states for the game state machine."""
-
     MAIN_MENU = auto()
     PLAYING = auto()
     PAUSED = auto()
@@ -54,22 +42,13 @@ class GameState(Enum):
 
 
 class Game:
-    """Core game class — owns all game objects and the main loop.
-
-    Uses an explicit state machine (GameState) to route events,
-    updates, and drawing to the correct handler.
-
-    Args:
-        config: Validated configuration dictionary.
-        screen: Pygame display surface.
-    """
+    """Owns all game objects + the main loop."""
 
     def __init__(
         self,
         config: dict[str, Any],
         screen: pygame.Surface,
     ) -> None:
-        """Initialise game objects, fonts, and start at the main menu."""
         self._config = config
         self._screen = screen
         self._clock = pygame.time.Clock()
@@ -120,7 +99,6 @@ class Game:
 
     @property
     def state(self) -> GameState:
-        """Current game state."""
         return self._state
 
     # ── Main loop ────────────────────────────────────────────────────────────
@@ -146,12 +124,6 @@ class Game:
                 self._on_key(event.key, event.unicode)
 
     def _on_key(self, key: int, unicode_char: str = "") -> None:
-        """Route a single keypress to the current state handler.
-
-        Args:
-            key:          pygame key constant.
-            unicode_char: Unicode character for text input.
-        """
         handler = {
             GameState.MAIN_MENU: self._key_menu,
             GameState.PLAYING: self._key_playing,
@@ -167,12 +139,6 @@ class Game:
     # ── Key handlers ─────────────────────────────────────────────────────────
 
     def _key_menu(self, key: int, _unicode: str = "") -> None:
-        """Handle main-menu navigation.
-
-        Args:
-            key:     pygame key constant.
-            _unicode: Unused.
-        """
         num_options = 4  # Start, Highscores, Instructions, Exit
         if key in (pygame.K_UP, pygame.K_w):
             self._menu_sel = (self._menu_sel - 1) % num_options
@@ -193,12 +159,6 @@ class Game:
             self._running = False
 
     def _key_playing(self, key: int, _unicode: str = "") -> None:
-        """Handle gameplay keypresses (movement, pause, cheats).
-
-        Args:
-            key:     pygame key constant.
-            _unicode: Unused.
-        """
         if key in (pygame.K_ESCAPE, pygame.K_p):
             self._state = GameState.PAUSED
             self._pause_sel = 0
@@ -215,12 +175,6 @@ class Game:
             self._player.handle_keydown(key)
 
     def _key_pause(self, key: int, _unicode: str = "") -> None:
-        """Handle pause-menu navigation.
-
-        Args:
-            key:     pygame key constant.
-            _unicode: Unused.
-        """
         if key in (pygame.K_ESCAPE, pygame.K_p):
             self._state = GameState.PLAYING
             logger.info("Game resumed")
@@ -238,16 +192,7 @@ class Game:
                 logger.info("Returned to main menu")
 
     def _key_endscreen(self, key: int, unicode_char: str = "") -> None:
-        """Handle game-over / victory key input.
-
-        If awaiting name entry, captures typed characters.
-        ENTER submits the name and returns to menu.
-        BACKSPACE removes the last character.
-
-        Args:
-            key:          pygame key constant.
-            unicode_char: Typed character for text input.
-        """
+        # name entry if score qualifies
         if self._awaiting_name:
             if key == pygame.K_RETURN:
                 self._submit_name()
@@ -264,12 +209,6 @@ class Game:
                 self._menu_sel = 0
 
     def _key_back(self, key: int, _unicode: str = "") -> None:
-        """Return to main menu from any informational screen.
-
-        Args:
-            key:     pygame key constant.
-            _unicode: Unused.
-        """
         if key in (pygame.K_RETURN, pygame.K_ESCAPE):
             self._state = GameState.MAIN_MENU
             self._menu_sel = 0
@@ -291,12 +230,6 @@ class Game:
         logger.info("New game started — level 1")
 
     def _load_level(self, idx: int, lives: int) -> None:
-        """Generate maze, spawn entities, create renderer for a level.
-
-        Args:
-            idx:   Zero-based level index.
-            lives: Current life count for the player.
-        """
         lvl_cfg = self._config["levels"][idx]
         self._level = Level(
             cfg=lvl_cfg,
@@ -341,15 +274,12 @@ class Game:
         )
 
     def _make_ghosts(self, grid: list[list[int]]) -> list[Ghost]:
-        """Spawn 4 ghosts, one per corner of the maze.
-
-        Args:
-            grid: Maze grid (corners read from it).
-
-        Returns:
-            List of 4 Ghost instances.
-        """
         corners = get_corners(grid)
+        # faster but still beatable
+        speed_map = {
+            'red': 2.5, 'pink': 2.2,
+            'cyan': 2.0, 'orange': 1.8,
+        }
         ghosts: list[Ghost] = []
         for i, (r, c) in enumerate(corners):
             colour = GHOST_COLOURS[i % len(GHOST_COLOURS)]
@@ -358,7 +288,7 @@ class Game:
                     spawn_row=r,
                     spawn_col=c,
                     colour=colour,
-                    move_speed=3.5,
+                    move_speed=speed_map.get(colour, 1.8),
                     edible_duration=float(
                         self._config["ghost_edible_duration"]
                     ),
@@ -370,11 +300,6 @@ class Game:
         return ghosts
 
     def _enter_end_state(self, state: GameState) -> None:
-        """Transition to GAME_OVER or VICTORY and prepare name entry.
-
-        Args:
-            state: GameState.GAME_OVER or GameState.VICTORY.
-        """
         self._state = state
         self._entry_score = self._scoring.score
         self._name_buffer = ""
@@ -402,11 +327,6 @@ class Game:
     # ── Update routing ────────────────────────────────────────────────────────
 
     def _update(self, dt: float) -> None:
-        """Route update to the current state handler.
-
-        Args:
-            dt: Delta time in seconds since last frame.
-        """
         self._menu.update(dt)
 
         if self._state == GameState.PLAYING:
@@ -417,11 +337,6 @@ class Game:
     # ── Gameplay update ───────────────────────────────────────────────────────
 
     def _update_playing(self, dt: float) -> None:
-        """Update gameplay: movement, collisions, transitions.
-
-        Args:
-            dt: Delta time in seconds.
-        """
         level = self._level
         player = self._player
         if level is None or player is None:
@@ -445,12 +360,14 @@ class Game:
         # ── Entity updates ───────────────────────────────────────────
         level.update(dt)
         player.update(dt, level.grid)
-        if not self._cheats.ghost_freeze:
+        # freeze ghosts during death AND for the frame the anim just ended
+        if not player.is_dying and not self._was_dying and not self._cheats.ghost_freeze:
             for ghost in self._ghosts:
                 ghost.update(dt, level.grid, player.row, player.col)
 
         # ── Collisions ───────────────────────────────────────────────
-        if not player.is_dying:
+        # skip collisions while dying OR the frame death anim just ended
+        if not player.is_dying and not self._was_dying:
             self._collide_pellets()
             self._collide_ghosts()
 
@@ -494,24 +411,24 @@ class Game:
         if player is None:
             return
 
+        # only check when player is fully settled on a tile (same as pellets)
+        # this prevents false kills when a ghost logically steps to your tile
+        # but is still visually animating from the previous one
+        if player.progress < 1.0:
+            return
+
         for ghost in self._ghosts:
             if ghost.eaten:
                 continue
 
-            # Current-tile collision
+            # ghost must also be settled on its tile for same-tile check
             same_tile = (
-                ghost.row == player.row
+                ghost.progress >= 1.0
+                and ghost.row == player.row
                 and ghost.col == player.col
             )
-            # Cross-tile collision (ghosts and player swap tiles in one frame)
-            cross_tile = (
-                ghost.row == player.prev_row
-                and ghost.col == player.prev_col
-                and ghost.prev_row == player.row
-                and ghost.prev_col == player.col
-            )
 
-            if not (same_tile or cross_tile):
+            if not same_tile:
                 continue
 
             if ghost.edible:
@@ -520,7 +437,8 @@ class Game:
                 logger.info(
                     "Ghost eaten! Score: %d", self._scoring.score,
                 )
-            elif not self._cheats.invincible:
+            elif (not self._cheats.invincible
+                  and not player.invincible_grace):
                 player.die()
                 self._scoring.reset_ghost_combo()
                 logger.info(
@@ -556,11 +474,6 @@ class Game:
             self._load_level(self._level_idx, player.lives)
 
     def _tick_animation(self, dt: float) -> None:
-        """Advance animation frame counters.
-
-        Args:
-            dt: Delta time in seconds.
-        """
         self._anim_timer += dt
         if self._anim_timer >= 1.0 / 8:
             self._anim_timer = 0.0
@@ -576,11 +489,7 @@ class Game:
             self._coin_frame = (self._coin_frame + 1) % 8
 
     def _update_endscreen(self, dt: float) -> None:
-        """Blink the name-entry cursor.
-
-        Args:
-            dt: Delta time in seconds.
-        """
+        # blink cursor for name entry
         if not self._awaiting_name:
             return
         self._cursor_timer += dt
@@ -646,17 +555,10 @@ class Game:
                     visible=sp.visible,
                 )
 
-        # Ghosts (eaten at spawn are hidden)
+        # Ghosts
         for ghost in sorted(
             self._ghosts, key=lambda g: g.eaten, reverse=True,
         ):
-            if ghost.state == GhostState.EATEN:
-                at_spawn = (
-                    ghost.row == ghost.spawn_row
-                    and ghost.col == ghost.spawn_col
-                )
-                if at_spawn:
-                    continue
             rdr.draw_ghost(
                 row=ghost.row,
                 col=ghost.col,
@@ -667,6 +569,7 @@ class Game:
                 anim_frame=ghost.anim_frame,
                 edible=ghost.edible,
                 flash=ghost.flashing,
+                eaten=ghost.eaten,
             )
 
         # Player

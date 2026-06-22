@@ -1,8 +1,4 @@
-"""src/ui/renderer.py — All drawing logic for the Pac-Man game.
-
-Uses sprite sheets from assets/sprites/ via sprite_loader.py.
-Nothing here touches game state — it only reads and draws.
-"""
+# renderer.py — draws everything, touches no game state
 
 import pygame
 from typing import Optional
@@ -34,16 +30,6 @@ WEST: int = 8
 
 
 class Renderer:
-    """Handles all pygame drawing for the Pac-Man game.
-
-    Args:
-        screen:     The pygame Surface to draw on.
-        maze_cols:  Number of columns in the maze grid.
-        maze_rows:  Number of rows in the maze grid.
-        tile_size:  Pixel size of each maze tile (default 32).
-        hud_width:  Width of the HUD panel on the right (default 200).
-        asset_root: Path to the assets directory.
-    """
 
     def __init__(
         self,
@@ -54,7 +40,6 @@ class Renderer:
         hud_width: int = 200,
         asset_root: str = "assets",
     ) -> None:
-        """Initialise renderer and load all sprites."""
         self._screen = screen
         self._tile = tile_size
         self._hud_w = hud_width
@@ -78,15 +63,6 @@ class Renderer:
     # ── Coordinate helpers ──────────────────────────────────────────────────
 
     def tile_rect(self, row: int, col: int) -> pygame.Rect:
-        """Return pixel Rect for a grid tile.
-
-        Args:
-            row: Grid row index.
-            col: Grid column index.
-
-        Returns:
-            pygame.Rect covering that tile on screen.
-        """
         return pygame.Rect(
             self._offset_x + col * self._tile,
             self._offset_y + row * self._tile,
@@ -94,22 +70,12 @@ class Renderer:
         )
 
     def tile_center(self, row: int, col: int) -> tuple[int, int]:
-        """Return pixel centre of a grid tile.
-
-        Args:
-            row: Grid row index.
-            col: Grid column index.
-
-        Returns:
-            (x, y) pixel centre coordinates.
-        """
         r = self.tile_rect(row, col)
         return r.centerx, r.centery
 
     # ── Background ──────────────────────────────────────────────────────────
 
     def clear(self) -> None:
-        """Fill screen with background and draw HUD panel."""
         self._screen.fill(DARK_BLUE)
         sw, sh = self._screen.get_size()
         pygame.draw.rect(
@@ -120,11 +86,6 @@ class Renderer:
     # ── Maze ────────────────────────────────────────────────────────────────
 
     def draw_maze(self, grid: list[list[int]]) -> None:
-        """Draw the full maze grid.
-
-        Args:
-            grid: 2-D bitmask grid from src/maze/loader.py.
-        """
         t = self._tile
         wt = max(2, t // 8)
 
@@ -172,19 +133,6 @@ class Renderer:
         is_dying: bool = False,
         death_frame: int = 0,
     ) -> None:
-        """Draw Pac-Man with smooth inter-tile animation.
-
-        Args:
-            row:         Current tile row.
-            col:         Current tile column.
-            prev_row:    Previous tile row.
-            prev_col:    Previous tile column.
-            progress:    Animation progress 0.0->1.0 between tiles.
-            direction:   Facing direction N/S/E/W.
-            anim_frame:  Movement animation frame index (0-2).
-            is_dying:    True if death animation is playing.
-            death_frame: Death animation frame index (0-3).
-        """
         cx0, cy0 = self.tile_center(prev_row, prev_col)
         cx1, cy1 = self.tile_center(row, col)
         px = int(cx0 + (cx1 - cx0) * progress)
@@ -214,24 +162,26 @@ class Renderer:
         anim_frame: int,
         edible: bool = False,
         flash: bool = False,
+        eaten: bool = False,
     ) -> None:
-        """Draw a ghost with smooth inter-tile animation.
-
-        Args:
-            row:        Current tile row.
-            col:        Current tile column.
-            prev_row:   Previous tile row.
-            prev_col:   Previous tile column.
-            progress:   Animation progress 0.0->1.0.
-            colour:     Ghost colour: 'red','pink','cyan','orange'.
-            anim_frame: Walk cycle frame (0-1).
-            edible:     True when ghost is edible (blue).
-            flash:      True when flashing (edible time almost up).
-        """
         cx0, cy0 = self.tile_center(prev_row, prev_col)
         cx1, cy1 = self.tile_center(row, col)
         px = int(cx0 + (cx1 - cx0) * progress)
         py = int(cy0 + (cy1 - cy0) * progress)
+
+        if eaten:
+            # just draw eyes going back to spawn
+            eye_r = self._tile // 6
+            off_x = self._tile // 5
+            for ex in (px - off_x, px + off_x):
+                pygame.draw.circle(
+                    self._screen, WHITE, (ex, py), eye_r,
+                )
+                pygame.draw.circle(
+                    self._screen, DARK_BLUE,
+                    (ex + 1, py + 1), max(1, eye_r // 2),
+                )
+            return
 
         if edible:
             key = "white" if flash else "blue"
@@ -246,13 +196,6 @@ class Renderer:
     # ── Pellets ─────────────────────────────────────────────────────────────
 
     def draw_pacgum(self, row: int, col: int, anim_frame: int = 0) -> None:
-        """Draw a regular pacgum (coin spin animation).
-
-        Args:
-            row:        Grid row.
-            col:        Grid column.
-            anim_frame: Coin spin frame index (0-7).
-        """
         sprite = self._coin[anim_frame % len(self._coin)]
         rect = sprite.get_rect(center=self.tile_center(row, col))
         self._screen.blit(sprite, rect)
@@ -264,14 +207,6 @@ class Renderer:
         anim_frame: int = 0,
         visible: bool = True,
     ) -> None:
-        """Draw a super-pacgum power pellet (big coin).
-
-        Args:
-            row:        Grid row.
-            col:        Grid column.
-            anim_frame: Spin frame index (0-7).
-            visible:    False during blink-off phase.
-        """
         if not visible:
             return
         sprite = self._bigcoin[anim_frame % len(self._bigcoin)]
@@ -288,15 +223,6 @@ class Renderer:
         time_left: float,
         cheats_active: Optional[list[str]] = None,
     ) -> None:
-        """Draw the right-side HUD panel.
-
-        Args:
-            score:         Current player score.
-            lives:         Remaining lives.
-            level:         Current level (1-based).
-            time_left:     Seconds remaining in the level.
-            cheats_active: Active cheat names to display.
-        """
         sw, _ = self._screen.get_size()
         x = sw - self._hud_w + 16
         y = 30
@@ -344,11 +270,6 @@ class Renderer:
     # ── Debug ───────────────────────────────────────────────────────────────
 
     def draw_debug_overlay(self, fps: float) -> None:
-        """Draw FPS counter in the top-left corner.
-
-        Args:
-            fps: Current frames per second.
-        """
         self._screen.blit(
             self._font_small.render(f"FPS: {fps:.1f}", True, WHITE), (6, 6)
         )

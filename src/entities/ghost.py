@@ -1,12 +1,8 @@
-"""src/entities/ghost.py — Ghost entity with BFS AI.
+"""Ghost entity with BFS pathfinding.
 
-Each ghost is always in one of four states:
-    CHASE  — moves toward Pac-Man (BFS shortest path).
-    FLEE   — runs away from Pac-Man (BFS longest safe path).
-    EATEN  — just eaten by Pac-Man; returns to its corner spawn.
-    FROZEN — externally paused (cheat mode).
-
-Movement uses the same smooth tile-based interpolation as Player.
+States: CHASE, FLEE, EATEN, FROZEN.
+Each ghost has colour-based AI smartness — red is the
+smartest (50% BFS), orange is dumb (20% BFS, rest random).
 """
 
 import collections
@@ -16,18 +12,16 @@ from typing import Optional
 
 from src.maze.loader import can_move
 
-DIRECTION_VECTORS: dict[str, tuple[int, int]] = {
+DIR_DELTA = {
     "N": (-1, 0),
     "S": (1, 0),
     "E": (0, 1),
     "W": (0, -1),
 }
-ALL_DIRS: list[str] = ["N", "S", "E", "W"]
+ALL_DIRS = ["N", "S", "E", "W"]
 
 
 class GhostState(Enum):
-    """Ghost behaviour state."""
-
     CHASE = auto()
     FLEE = auto()
     EATEN = auto()
@@ -35,19 +29,9 @@ class GhostState(Enum):
 
 
 class Ghost:
-    """A single ghost.
+    """A single ghost with tile-based movement and BFS AI."""
 
-    Args:
-        spawn_row:       Corner row where this ghost starts (and respawns).
-        spawn_col:       Corner column.
-        colour:          Colour name: 'red', 'pink', 'cyan', 'orange'.
-        move_speed:      Tiles per second in CHASE mode.
-        edible_duration: Seconds the ghost stays edible after a super-pacgum.
-        respawn_delay:   Seconds after being eaten before respawning.
-    """
-
-    # Edible flash starts this many seconds before edible time runs out
-    FLASH_THRESHOLD: float = 2.0
+    FLASH_THRESHOLD = 2.0  # seconds before edible ends
 
     def __init__(
         self,
@@ -58,66 +42,54 @@ class Ghost:
         edible_duration: float = 8.0,
         respawn_delay: float = 5.0,
     ) -> None:
-        """Initialise ghost at its corner spawn."""
-        self._spawn_row: int = spawn_row
-        self._spawn_col: int = spawn_col
-        self.colour: str = colour
+        """Set up ghost at its corner spawn."""
+        self._spawn_row = spawn_row
+        self._spawn_col = spawn_col
+        self.colour = colour
 
-        # Position
-        self.row: int = spawn_row
-        self.col: int = spawn_col
-        self._prev_row: int = spawn_row
-        self._prev_col: int = spawn_col
-        self._progress: float = 1.0  # start at rest
+        self.row = spawn_row
+        self.col = spawn_col
+        self._prev_row = spawn_row
+        self._prev_col = spawn_col
+        self._progress = 1.0
 
-        # Speeds
-        self._speed_chase: float = move_speed
-        self._speed_flee: float = move_speed * 0.6
-        self._speed_eaten: float = move_speed * 2.0
+        # different speeds for different states
+        self._speed_chase = move_speed
+        self._speed_flee = move_speed * 0.6
+        self._speed_eaten = move_speed * 2.0
 
-        # State
-        self._state: GhostState = GhostState.CHASE
-        self._edible_timer: float = 0.0
-        self._edible_duration: float = edible_duration
-        self._respawn_timer: float = 0.0
-        self._respawn_delay: float = respawn_delay
+        self._state = GhostState.CHASE
+        self._edible_timer = 0.0
+        self._edible_dur = edible_duration
+        self._respawn_timer = 0.0
+        self._respawn_delay = respawn_delay
 
-        # Pathfinding: next direction to move
-        self._next_dir: str = "N"
-
-        # Animation
-        self._anim_frame: int = 0
-
-    # ── Properties ──────────────────────────────────────────────────────────
+        self._next_dir = "N"
+        self._anim_frame = 0
 
     @property
     def prev_row(self) -> int:
-        """Previous tile row (for smooth interpolation)."""
         return self._prev_row
 
     @property
     def prev_col(self) -> int:
-        """Previous tile column (for smooth interpolation)."""
         return self._prev_col
 
     @property
     def progress(self) -> float:
-        """Animation progress 0.0→1.0 between previous and current tile."""
         return self._progress
 
     @property
     def state(self) -> GhostState:
-        """Current behaviour state."""
         return self._state
 
     @property
     def edible(self) -> bool:
-        """True while the ghost can be eaten by Pac-Man."""
         return self._state == GhostState.FLEE
 
     @property
     def flashing(self) -> bool:
-        """True when edible time is almost up (triggers blink sprite)."""
+        """True when edible time almost up (blink sprite)."""
         return (
             self._state == GhostState.FLEE
             and self._edible_timer <= self.FLASH_THRESHOLD
@@ -125,51 +97,47 @@ class Ghost:
 
     @property
     def eaten(self) -> bool:
-        """True while the ghost is returning to its spawn corner."""
         return self._state == GhostState.EATEN
 
     @property
     def anim_frame(self) -> int:
-        """Current walk-cycle animation frame (0 or 1)."""
         return self._anim_frame
 
     @property
     def spawn_row(self) -> int:
-        """Spawn corner row position."""
         return self._spawn_row
 
     @property
     def spawn_col(self) -> int:
-        """Spawn corner column position."""
         return self._spawn_col
 
-    # ── State transitions ───────────────────────────────────────────────────
+    # --- state changes ---
 
     def make_edible(self) -> None:
-        """Enter FLEE (edible) state — called when a super-pacgum is eaten."""
+        """Go edible (flee mode) when super-pacgum eaten."""
         if self._state == GhostState.EATEN:
-            return  # already dead, ignore
+            return  # already dead
         self._state = GhostState.FLEE
-        self._edible_timer = self._edible_duration
+        self._edible_timer = self._edible_dur
 
     def be_eaten(self) -> None:
-        """Enter EATEN state — called when Pac-Man eats this ghost."""
+        """Ghost got eaten by pacman."""
         self._state = GhostState.EATEN
         self._edible_timer = 0.0
         self._respawn_timer = self._respawn_delay
 
     def freeze(self) -> None:
-        """Enter FROZEN state (cheat: ghost freeze)."""
+        """Cheat: freeze in place."""
         if self._state not in (GhostState.EATEN,):
             self._state = GhostState.FROZEN
 
     def unfreeze(self) -> None:
-        """Exit FROZEN state back to CHASE."""
+        """Cheat: unfreeze."""
         if self._state == GhostState.FROZEN:
             self._state = GhostState.CHASE
 
     def reset(self) -> None:
-        """Hard-reset ghost to spawn position in CHASE state."""
+        """Hard reset to spawn, used after player dies."""
         self.row = self._spawn_row
         self.col = self._spawn_col
         self._prev_row = self._spawn_row
@@ -179,7 +147,7 @@ class Ghost:
         self._edible_timer = 0.0
         self._respawn_timer = 0.0
 
-    # ── Update ──────────────────────────────────────────────────────────────
+    # --- update ---
 
     def update(
         self,
@@ -188,14 +156,7 @@ class Ghost:
         player_row: int,
         player_col: int,
     ) -> None:
-        """Advance ghost state by one frame.
-
-        Args:
-            dt:         Delta time in seconds.
-            grid:       Current maze grid.
-            player_row: Pac-Man's current tile row.
-            player_col: Pac-Man's current tile column.
-        """
+        """Advance ghost one frame."""
         if self._state == GhostState.FROZEN:
             return
 
@@ -216,13 +177,7 @@ class Ghost:
         self._update_movement(dt, grid, player_row, player_col, speed)
 
     def _update_eaten(self, dt: float, grid: list[list[int]]) -> None:
-        """Move back to spawn, then respawn after delay.
-
-        Args:
-            dt:   Delta time in seconds.
-            grid: Maze grid.
-        """
-        # Still walking back?
+        """Walk back to spawn then wait for respawn timer."""
         if self.row != self._spawn_row or self.col != self._spawn_col:
             self._update_movement(
                 dt, grid,
@@ -231,7 +186,7 @@ class Ghost:
             )
             return
 
-        # At spawn — wait for respawn timer
+        # at spawn, wait
         self._respawn_timer -= dt
         if self._respawn_timer <= 0:
             self._state = GhostState.CHASE
@@ -244,28 +199,19 @@ class Ghost:
         target_col: int,
         speed: float,
     ) -> None:
-        """Tile-to-tile movement with BFS direction choice.
-
-        Args:
-            dt:         Delta time.
-            grid:       Maze grid.
-            target_row: Row to move toward (or away from in FLEE).
-            target_col: Col to move toward (or away from in FLEE).
-            speed:      Movement speed in tiles/second.
-        """
+        """Move tile-to-tile toward target."""
         if self._progress < 1.0:
             self._progress = min(1.0, self._progress + speed * dt)
-            # Tick animation every half-tile
             if self._progress >= 1.0:
                 self._anim_frame ^= 1
             return
 
-        # At a tile boundary — choose next direction
+        # on a tile, pick direction
         direction = self._choose_direction(grid, target_row, target_col)
         if direction is None:
-            return  # stuck
+            return  # stuck (shouldn't happen normally)
 
-        dr, dc = DIRECTION_VECTORS[direction]
+        dr, dc = DIR_DELTA[direction]
         self._prev_row = self.row
         self._prev_col = self.col
         self.row += dr
@@ -279,21 +225,25 @@ class Ghost:
         target_row: int,
         target_col: int,
     ) -> Optional[str]:
-        """Pick next direction via BFS.
-
-        In CHASE/EATEN: moves toward target (shortest path).
-        In FLEE: moves away from target (longest 1-step distance).
-
-        Args:
-            grid:       Maze grid.
-            target_row: Target row.
-            target_col: Target col.
-
-        Returns:
-            Direction string 'N'/'S'/'E'/'W', or None if no moves.
-        """
         if self._state == GhostState.FLEE:
             return self._flee_direction(grid, target_row, target_col)
+
+        # colour-based intelligence — dumb but not braindead
+        smartness = {
+            'red': 0.60, 'pink': 0.45,
+            'cyan': 0.30, 'orange': 0.20,
+        }
+        chance = smartness.get(self.colour, 0.40)
+
+        # sometimes just go random (makes game more fun)
+        if random.random() > chance:
+            valid = [
+                d for d in ALL_DIRS
+                if can_move(grid, self.row, self.col, d)
+            ]
+            if valid:
+                return random.choice(valid)
+
         return self._bfs_direction(grid, target_row, target_col)
 
     def _bfs_direction(
@@ -302,16 +252,7 @@ class Ghost:
         target_row: int,
         target_col: int,
     ) -> Optional[str]:
-        """BFS from current position to target; return first-step direction.
-
-        Args:
-            grid:       Maze grid.
-            target_row: Destination row.
-            target_col: Destination column.
-
-        Returns:
-            Direction of the first step, or None if unreachable.
-        """
+        """BFS shortest path, returns first step direction."""
         start = (self.row, self.col)
         goal = (target_row, target_col)
 
@@ -320,35 +261,40 @@ class Ghost:
 
         rows, cols = len(grid), len(grid[0])
 
-        # BFS: queue holds (row, col, first_direction)
-        queue: collections.deque[tuple[int, int, str]] = collections.deque()
+        queue: collections.deque[tuple[int, int, str]] = (
+            collections.deque()
+        )
         visited: set[tuple[int, int]] = {start}
 
         for d in ALL_DIRS:
             if (0 <= self.row < rows and 0 <= self.col < cols
                     and can_move(grid, self.row, self.col, d)):
-                dr, dc = DIRECTION_VECTORS[d]
+                dr, dc = DIR_DELTA[d]
                 nr, nc = self.row + dr, self.col + dc
                 if (0 <= nr < rows and 0 <= nc < cols
                         and (nr, nc) not in visited):
                     visited.add((nr, nc))
                     queue.append((nr, nc, d))
 
-        rows, cols = len(grid), len(grid[0])
         while queue:
             r, c, first_dir = queue.popleft()
             if (r, c) == goal:
                 return first_dir
             for d in ALL_DIRS:
-                if 0 <= r < rows and 0 <= c < cols and can_move(grid, r, c, d):
-                    dr, dc = DIRECTION_VECTORS[d]
+                if (0 <= r < rows and 0 <= c < cols
+                        and can_move(grid, r, c, d)):
+                    dr, dc = DIR_DELTA[d]
                     nr, nc = r + dr, c + dc
-                    if 0 <= nr < rows and 0 <= nc < cols and (nr, nc) not in visited:
+                    if (0 <= nr < rows and 0 <= nc < cols
+                            and (nr, nc) not in visited):
                         visited.add((nr, nc))
                         queue.append((nr, nc, first_dir))
 
-        # Target unreachable — pick any valid direction at random
-        valid = [d for d in ALL_DIRS if can_move(grid, self.row, self.col, d)]
+        # unreachable, just go somewhere
+        valid = [
+            d for d in ALL_DIRS
+            if can_move(grid, self.row, self.col, d)
+        ]
         return random.choice(valid) if valid else None
 
     def _flee_direction(
@@ -357,22 +303,13 @@ class Ghost:
         player_row: int,
         player_col: int,
     ) -> Optional[str]:
-        """Pick the direction that maximises Manhattan distance from player.
-
-        Args:
-            grid:       Maze grid.
-            player_row: Pac-Man's row.
-            player_col: Pac-Man's column.
-
-        Returns:
-            Best escape direction, or random valid direction as fallback.
-        """
+        """Run away — pick direction that maximises distance."""
         best_dir: Optional[str] = None
-        best_dist: int = -1
+        best_dist = -1
 
         for d in ALL_DIRS:
             if can_move(grid, self.row, self.col, d):
-                dr, dc = DIRECTION_VECTORS[d]
+                dr, dc = DIR_DELTA[d]
                 nr, nc = self.row + dr, self.col + dc
                 dist = abs(nr - player_row) + abs(nc - player_col)
                 if dist > best_dist:

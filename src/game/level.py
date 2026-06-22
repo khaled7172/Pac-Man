@@ -7,7 +7,10 @@ and replaces them when a level is completed or the player dies.
 
 from typing import Any
 
-from src.maze.loader import generate_maze, get_walkable_cells, get_corners
+from src.maze.loader import (
+    generate_maze, get_walkable_cells,
+    get_super_pacgum_positions,
+)
 from src.entities.pellet import Pacgum, SuperPacgum
 
 
@@ -44,12 +47,15 @@ class Level:
         )
 
         # Populate pellets
-        corners = set(get_corners(self.grid))
+        sp_positions = get_super_pacgum_positions(self.grid)
         walkable = get_walkable_cells(self.grid)
+        walkable_set = set(walkable)
 
-        # Super-pacgums at the 4 corners (if walkable)
+        # super-pacgums offset from ghost corners
         self.super_pellets: list[SuperPacgum] = [
-            SuperPacgum(r, c) for (r, c) in corners if (r, c) in set(walkable)
+            SuperPacgum(r, c)
+            for (r, c) in sp_positions
+            if (r, c) in walkable_set
         ]
         super_positions = {(sp.row, sp.col) for sp in self.super_pellets}
 
