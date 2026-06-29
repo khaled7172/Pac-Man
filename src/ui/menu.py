@@ -516,7 +516,7 @@ class MenuRenderer:
             ]),
             ("CHEATS  (reviewer mode)", [
                 "I — Invincibility     F — Freeze ghosts",
-                "S — Speed ×2         L — Extra life",
+                "B — Speed ×2         L — Extra life",
                 "N — Skip level",
             ]),
         ]

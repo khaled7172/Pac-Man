@@ -349,6 +349,7 @@ class Game:
                 player.respawn()
                 for g in self._ghosts:
                     g.reset()
+                level.time_left = level._max_time
                 logger.info(
                     "Player respawned. Lives: %d", player.lives,
                 )
@@ -361,8 +362,10 @@ class Game:
         level.update(dt)
         player.update(dt, level.grid)
         # freeze ghosts during death AND for the frame the anim just ended
-        if not player.is_dying and not self._was_dying and not self._cheats.ghost_freeze:
+        if not player.is_dying and not self._was_dying:
             for ghost in self._ghosts:
+                if self._cheats.ghost_freeze and not ghost.eaten:
+                    continue
                 ghost.update(dt, level.grid, player.row, player.col)
 
         # ── Collisions ───────────────────────────────────────────────
@@ -456,15 +459,12 @@ class Game:
     def _handle_timeout(self) -> None:
         """Handle level timer expiry — lose a life."""
         player = self._player
-        if player is None:
+        if player is None or player.is_dying:
             return
         logger.info("Time up! Losing a life.")
         if not self._cheats.invincible:
             player.die()
-        if not player.alive:
-            self._enter_end_state(GameState.GAME_OVER)
-        else:
-            self._load_level(self._level_idx, player.lives)
+        self._level.time_left = self._level._max_time
 
     def _tick_animation(self, dt: float) -> None:
         self._anim_timer += dt

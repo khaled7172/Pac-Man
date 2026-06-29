@@ -171,8 +171,14 @@ def load_config(path: str) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             raw = f.read()
     except FileNotFoundError:
-        logger.error("Config file not found: '%s' — using all defaults", path)
-        return config
+        import sys, os
+        meipass_path = os.path.join(getattr(sys, '_MEIPASS', ''), path) if hasattr(sys, '_MEIPASS') else None
+        if meipass_path and os.path.exists(meipass_path):
+            with open(meipass_path, "r", encoding="utf-8") as f:
+                raw = f.read()
+        else:
+            logger.error("Config file not found: '%s' — using all defaults", path)
+            return config
     except OSError as e:
         logger.error("Cannot read config file '%s': %s — using all defaults",
                      path, e)

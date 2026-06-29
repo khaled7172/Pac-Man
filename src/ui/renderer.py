@@ -38,8 +38,13 @@ class Renderer:
         maze_rows: int,
         tile_size: int = 32,
         hud_width: int = 200,
-        asset_root: str = "assets",
+        asset_root: str | None = None,
     ) -> None:
+        import sys
+        import os
+        if asset_root is None:
+            base_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+            asset_root = os.path.join(base_dir, "assets")
         self._screen = screen
         self._tile = tile_size
         self._hud_w = hud_width
