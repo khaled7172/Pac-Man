@@ -5,6 +5,7 @@
 #   15 = fully closed, 0 = fully open corridor
 
 import collections
+import random
 from typing import cast
 
 from mazegenerator import MazeGenerator
@@ -36,11 +37,47 @@ def generate_maze(width: int, height: int, seed: int = 0) -> list[list[int]]:
         maze = cast(list[list[int]], gen.maze)
         # knock open walls until every non-wall cell is reachable from center
         _connect_isolated_pockets(maze)
+        _open_random_walls(maze, seed, fraction=0.25)
         return maze
     except Exception as e:
         raise RuntimeError(
             f"Maze generation failed (size={width}x{height}, seed={seed}): {e}"
         )
+
+
+def _open_random_walls(grid: list[list[int]], seed: int, fraction: float = 0.25) -> None:
+    """Randomly open a fraction of interior walls to create more loops."""
+    rows = len(grid)
+    cols = len(grid[0]) if rows > 0 else 0
+    rng = random.Random(seed)
+
+    walls = []
+    for r in range(1, rows - 1):
+        for c in range(1, cols - 1):
+            if grid[r][c] == ALL_WALLS:
+                continue
+            for d in ['S', 'E']:
+                dr, dc = _DELTA[d]
+                nr, nc = r + dr, c + dc
+                if nr >= rows - 1 or nc >= cols - 1:
+                    continue
+                if grid[nr][nc] == ALL_WALLS:
+                    continue
+
+                bit_here = {'N': NORTH, 'S': SOUTH, 'E': EAST, 'W': WEST}[d]
+                if grid[r][c] & bit_here:
+                    walls.append((r, c, d))
+
+    num_to_open = int(len(walls) * fraction)
+    if num_to_open > 0 and walls:
+        walls_to_open = rng.sample(walls, min(num_to_open, len(walls)))
+        for r, c, d in walls_to_open:
+            dr, dc = _DELTA[d]
+            nr, nc = r + dr, c + dc
+            bit_here = {'N': NORTH, 'S': SOUTH, 'E': EAST, 'W': WEST}[d]
+            bit_there = _OPPOSITE[d]
+            grid[r][c] &= ~bit_here
+            grid[nr][nc] &= ~bit_there
 
 
 def _connect_isolated_pockets(grid: list[list[int]]) -> None:

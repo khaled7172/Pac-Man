@@ -17,8 +17,8 @@ env/
 # Build / packaging
 build/
 dist/
+docs/
 *.egg-info/
-*.spec
 
 # Game runtime files
 highscores.json

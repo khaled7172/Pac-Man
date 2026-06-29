@@ -411,24 +411,17 @@ class Game:
         if player is None:
             return
 
-        # only check when player is fully settled on a tile (same as pellets)
-        # this prevents false kills when a ghost logically steps to your tile
-        # but is still visually animating from the previous one
-        if player.progress < 1.0:
-            return
-
         for ghost in self._ghosts:
             if ghost.eaten:
                 continue
 
-            # ghost must also be settled on its tile for same-tile check
-            same_tile = (
-                ghost.progress >= 1.0
-                and ghost.row == player.row
-                and ghost.col == player.col
-            )
+            p_r = player.prev_row + (player.row - player.prev_row) * player.progress
+            p_c = player.prev_col + (player.col - player.prev_col) * player.progress
+            g_r = ghost.prev_row + (ghost.row - ghost.prev_row) * ghost.progress
+            g_c = ghost.prev_col + (ghost.col - ghost.prev_col) * ghost.progress
 
-            if not same_tile:
+            dist = abs(p_r - g_r) + abs(p_c - g_c)
+            if dist > 0.8:
                 continue
 
             if ghost.edible:

@@ -20,7 +20,7 @@ class CheatManager:
     Available cheats:
         I — Invincibility (ghosts cannot kill player)
         F — Ghost Freeze  (all ghosts stop moving)
-        S — Speed Boost   (2× player movement speed)
+        B — Speed Boost   (2× player movement speed)
         L — Extra Life    (add 1 life; one-shot, not toggle)
         N — Level Skip    (immediately complete current level)
     """
@@ -59,7 +59,7 @@ class CheatManager:
             logger.info("Cheat: %s", name)
             return name
 
-        if key == pygame.K_s:
+        if key == pygame.K_b:
             self.speed_boost = not self.speed_boost
             if game._player is not None:
                 game._player._speed = (
