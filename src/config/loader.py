@@ -171,8 +171,12 @@ def load_config(path: str) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             raw = f.read()
     except FileNotFoundError:
-        import sys, os
-        meipass_path = os.path.join(getattr(sys, '_MEIPASS', ''), path) if hasattr(sys, '_MEIPASS') else None
+        import sys
+        import os
+        meipass_path = None
+        if hasattr(sys, '_MEIPASS'):
+            meipass_path = os.path.join(getattr(sys, '_MEIPASS', ''), path)
+
         if meipass_path and os.path.exists(meipass_path):
             with open(meipass_path, "r", encoding="utf-8") as f:
                 raw = f.read()

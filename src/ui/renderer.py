@@ -43,7 +43,8 @@ class Renderer:
         import sys
         import os
         if asset_root is None:
-            base_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+            root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            base_dir = getattr(sys, '_MEIPASS', os.path.abspath(root_dir))
             asset_root = os.path.join(base_dir, "assets")
         self._screen = screen
         self._tile = tile_size

@@ -459,7 +459,7 @@ class Game:
     def _handle_timeout(self) -> None:
         """Handle level timer expiry — lose a life."""
         player = self._player
-        if player is None or player.is_dying:
+        if player is None or player.is_dying or self._level is None:
             return
         logger.info("Time up! Losing a life.")
         if not self._cheats.invincible:
