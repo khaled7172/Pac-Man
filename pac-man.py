@@ -27,7 +27,6 @@ MIN_WINDOW_H: int = 500
 
 def main() -> None:
     """Parse arguments, load config, open window, run game."""
-    # ── Arguments ───────────────────────────────────────────────────
     if len(sys.argv) != 2:
         print("Usage: python3 pac-man.py <config.json>")
         sys.exit(1)
@@ -37,7 +36,6 @@ def main() -> None:
         print(f"Error: '{config_path}' is not a .json file")
         sys.exit(1)
 
-    # ── Config ──────────────────────────────────────────────────────
     config = load_config(config_path)
     logger.info(
         "Config loaded — %d levels, %d lives",
@@ -45,7 +43,6 @@ def main() -> None:
         config["lives"],
     )
 
-    # ── Window size (fits the largest maze) ─────────────────────────
     max_cols = max(
         lvl["width"] for lvl in config["levels"]
     )
@@ -55,7 +52,6 @@ def main() -> None:
     window_w = max_cols * TILE_SIZE + HUD_W
     window_h = max(max_rows * TILE_SIZE, MIN_WINDOW_H)
 
-    # ── Pygame init ─────────────────────────────────────────────────
     pygame.init()
     screen = pygame.display.set_mode((window_w, window_h))
     pygame.display.set_caption(TITLE)
@@ -65,7 +61,6 @@ def main() -> None:
         window_w, window_h,
     )
 
-    # ── Run ─────────────────────────────────────────────────────────
     try:
         game = Game(config, screen)
         game.run()
