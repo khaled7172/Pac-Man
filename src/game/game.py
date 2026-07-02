@@ -58,7 +58,8 @@ class Game:
         # Sub-systems
         self._menu = MenuRenderer()
         self._cheats = CheatManager()
-        self._highscores = HighscoreManager(HIGHSCORE_FILE)
+        hs_file = str(config.get("highscore_filename", HIGHSCORE_FILE))
+        self._highscores = HighscoreManager(hs_file)
 
         # Scoring (re-created on each new game)
         self._scoring = Scoring(
