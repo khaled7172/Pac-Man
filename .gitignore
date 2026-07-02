@@ -17,7 +17,6 @@ env/
 # Build / packaging
 build/
 dist/
-docs/
 *.egg-info/
 
 # Game runtime files
