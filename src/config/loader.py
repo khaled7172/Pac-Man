@@ -11,7 +11,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# ── Defaults ────────────────────────────────────────────────────────────
 
 DEFAULTS: dict[str, Any] = {
     "lives": 3,
@@ -36,7 +35,6 @@ DEFAULTS: dict[str, Any] = {
     ],
 }
 
-# Valid ranges for numeric keys
 _INT_KEYS: dict[str, tuple[int, int]] = {
     "lives": (1, 10),
     "points_per_pacgum": (1, 10000),
@@ -48,7 +46,6 @@ _INT_KEYS: dict[str, tuple[int, int]] = {
 }
 
 
-# ── Comment stripping ───────────────────────────────────────────────────
 
 def _strip_comments(raw: str) -> str:
     """Remove # comment lines from a JSON string.
@@ -68,7 +65,6 @@ def _strip_comments(raw: str) -> str:
     return "\n".join(lines)
 
 
-# ── Validation helpers ──────────────────────────────────────────────────
 
 def _clamp_int(key: str, value: Any) -> int:
     """Validate and clamp an integer config value.
@@ -149,7 +145,6 @@ def _validate_level(raw: Any, index: int) -> dict[str, Any]:
     return result
 
 
-# ── Public API ──────────────────────────────────────────────────────────
 
 def load_config(path: str) -> dict[str, Any]:
     """Load and validate the game configuration file.
@@ -166,7 +161,6 @@ def load_config(path: str) -> dict[str, Any]:
     """
     config: dict[str, Any] = dict(DEFAULTS)
 
-    # ── Read file ───────────────────────────────────────────────────────────
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = f.read()
@@ -188,7 +182,6 @@ def load_config(path: str) -> dict[str, Any]:
                      path, e)
         return config
 
-    # ── Strip comments and parse JSON ───────────────────────────────────────
     try:
         cleaned = _strip_comments(raw)
         data: dict[str, Any] = json.loads(cleaned)
@@ -205,12 +198,10 @@ def load_config(path: str) -> dict[str, Any]:
             path)
         return config
 
-    # ── Validate integer keys ───────────────────────────────────────────────
     for key in _INT_KEYS:
         if key in data:
             config[key] = _clamp_int(key, data[key])
 
-    # ── Validate highscore filename ─────────────────────────────────────────
     hs = data.get("highscore_filename", DEFAULTS["highscore_filename"])
     if isinstance(hs, str) and hs.strip():
         config["highscore_filename"] = hs.strip()
@@ -220,7 +211,6 @@ def load_config(path: str) -> dict[str, Any]:
             DEFAULTS["highscore_filename"]
         )
 
-    # ── Validate levels ─────────────────────────────────────────────────────
     raw_levels = data.get("levels", DEFAULTS["levels"])
     if not isinstance(raw_levels, list) or len(raw_levels) == 0:
         logger.warning(
